@@ -1,7 +1,7 @@
 		
 		
-CDD_ID	Gene Name (approx.)	Subfamily CDD_ID
-cd08161	SET (General)	cd08161
+CDD_ID	Gene Name   Subfamily CDD_ID
+cd08161	SET cd08161
 cd10518	SETD1-like	cd10518
 cd19169	SETD1	cd10518
 cd19204	SETD1A	cd10518
