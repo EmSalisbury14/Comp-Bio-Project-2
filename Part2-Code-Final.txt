@@ -1,4 +1,4 @@
-# %%
+## %%
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -27,7 +27,7 @@ superfam_df = superfam_df.drop_duplicates()
 
 # %%
 
-RNA_seq_df = pd.read_csv("amphimedon_rnaseq.txt", sep='\t')
+RNA_seq_df = pd.read_csv("drosophila_rnaseq.txt", sep='\t')
 #RNA_seq_df.head(1)
 
 # %%
@@ -40,7 +40,7 @@ print(setsub_seq_df.columns)
 setsub_seq_df
 
 # %%
-cddid_df = pd.read_csv("mart_export (2).txt", sep='/t')
+cddid_df = pd.read_csv("mart_export (1).txt", sep='/t')
 cddid_df[['Gene_ID', 'CDD_ID']] = cddid_df["Gene stable ID	CDD ID"].str.split("\t", expand=True)
 # Drop the old combined column
 cddid_df = cddid_df.drop(columns=["Gene stable ID	CDD ID"])
@@ -60,6 +60,7 @@ print(df_merged)
 # %%
 final_df = merged_df.merge(RNA_seq_df, left_on="Gene_ID", right_on="GeneID", how="inner")
 final_df["CDD_ID"]
+print(final_df)
 finals_df = final_df.merge(setsub_seq_df,on= "CDD_ID",how="inner")
 finals_df.drop(columns=["Superfamily","Gene_Name_x","GeneID"], inplace=True)
 finals_df
@@ -70,13 +71,13 @@ Superfamily_Transcript_df = finals_df.drop(columns=['Gene_ID', 'CDD_ID'])
 
 #  Keep all unique Subfamily-TranscriptID combinations
 df_unique = Superfamily_Transcript_df.drop_duplicates(subset=["Subfamily_CDDID", "TranscriptID"])
-
+#print(df_unique)
 #  Sum TPM values per Subfamily_CDDID, keeping one representative Gene_Name_y
 df_summed = df_unique.groupby("Subfamily_CDDID").agg({
     "Subfamily_Name": "first",  # Take one subfamily name per subfamily
     **{col: "sum" for col in df_unique.columns if col not in ["Subfamily_CDDID", "Gene_Name_y", "TranscriptID", "Subfamily_Name"]}
 }).reset_index()
-
+#print(df_summed)
 output_file = 'unique_TPM_expression_amph_part2.txt'
 df_summed.to_csv(output_file, sep='\t', index=False)
 
@@ -92,34 +93,6 @@ df_loged = df_loged.sort_values(by="Subfamily_Name", ascending=True)
 #df_loged.drop(columns=["Gene_Name"], inplace=True)
 # Result
 df_loged
-
-# %%
-output_file = 'unique_TPM_expression_amph.txt'
-df_loged.to_csv(output_file, sep='\t', index=False)
-df_loged
-
-# %%
-df_heat = df_summed.loc[:, df_summed.columns.str.startswith("Sample")]
-
-df_heat.head()
-
-# %%
-row_mean = df_heat.mean(axis=1)
-log_mean = np.log2(row_mean)
-log_mean
-
-# %%
-numeric_cols = df_heat.select_dtypes(include='number')
-df_centered = numeric_cols.sub(log_mean, axis=0)
-df_centered.head()
-
-# %%
-max_value = df_centered.max().max()
-
-min_value = df_centered.min().min()
-
-print("Max value:", max_value)
-print("Min value:", min_value)
 
 # %%
 finals_df
@@ -197,5 +170,23 @@ plt.draw()
 plt.draw()
 plt.show()
 plt.savefig('Top Domains Heatmap- drosophila.pdf')
+
+
+
+# %%
+print("heatmap_data_sorted index:")
+print(heatmap_data_sorted.index[:5])
+
+print("\ntop_20_superfamilies index:")
+print(top_20_superfamilies.index[:5])
+
+# %%
+print(heatmap_data_sorted)
+
+# %%
+
+
+# %%
+
 
 
