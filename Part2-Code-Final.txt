@@ -1,0 +1,201 @@
+# %%
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
+
+# %%
+# %%
+# Load the CDD data
+cdd_file = "cddid.tbl.gz"
+cdd_df = pd.read_csv(cdd_file, sep="\t", header=None, names=["CDD_ID", "Domain_ID", "Gene_Name", "Description", "Length"])
+cdd_df = cdd_df[["Domain_ID","Gene_Name"]]
+# View first few rows
+print(cdd_df)
+
+# %%
+superfam_df = pd.read_csv("CDDID_SuperfamilyID.txt", sep='\t')
+superfam_df.columns = ["CDD_ID_1", "Accession_1", "CDD_ID_2", "Accession_2"]
+
+superfam_df = superfam_df.drop(columns=[ "Accession_1","Accession_2" ])
+# Rename columns for clarity
+superfam_df.columns = ["CDD_ID", "Superfamily"]
+
+# Drop duplicates if any
+superfam_df = superfam_df.drop_duplicates()
+#superfam_df
+
+# %%
+
+RNA_seq_df = pd.read_csv("amphimedon_rnaseq.txt", sep='\t')
+#RNA_seq_df.head(1)
+
+# %%
+setsub_seq_df = pd.read_csv("SETSubfamilies(1).txt", delim_whitespace=True)
+setsub_seq_df.columns = ['CDD_ID', 'Gene_Name', 'Subfamily_CDDID',"Subfamily_Name"]
+
+#setsub_seq_df[['CDD_ID','Gene_ID','Subfamily_CDDID']] =setsub_seq_df["CDD_ID Gene Name Subfamily CDD_ID"].str.split(r"\s+", n=1, expand=True)
+#setsub_seq_df = setsub_seq_df.drop(columns=["CDD_ID Gene Name   Subfamily CDD_ID"])
+print(setsub_seq_df.columns)
+setsub_seq_df
+
+# %%
+cddid_df = pd.read_csv("mart_export (2).txt", sep='/t')
+cddid_df[['Gene_ID', 'CDD_ID']] = cddid_df["Gene stable ID	CDD ID"].str.split("\t", expand=True)
+# Drop the old combined column
+cddid_df = cddid_df.drop(columns=["Gene stable ID	CDD ID"])
+cddid_df
+
+# %%
+merged_df = cddid_df.merge(superfam_df, on='CDD_ID')
+df_merged = merged_df.merge(cdd_df, left_on="Superfamily", right_on="Domain_ID", how="left")
+
+# Append gene names directly to the Superfamily column
+df_merged["Superfamily"] = df_merged["Superfamily"] + ": " + df_merged["Gene_Name"]
+
+df_merged.drop(columns=["Domain_ID"], inplace=True)
+merged_df=df_merged
+print(df_merged)
+
+# %%
+final_df = merged_df.merge(RNA_seq_df, left_on="Gene_ID", right_on="GeneID", how="inner")
+final_df["CDD_ID"]
+finals_df = final_df.merge(setsub_seq_df,on= "CDD_ID",how="inner")
+finals_df.drop(columns=["Superfamily","Gene_Name_x","GeneID"], inplace=True)
+finals_df
+
+# %%
+# Drop unnecessary columns
+Superfamily_Transcript_df = finals_df.drop(columns=['Gene_ID', 'CDD_ID'])
+
+#  Keep all unique Subfamily-TranscriptID combinations
+df_unique = Superfamily_Transcript_df.drop_duplicates(subset=["Subfamily_CDDID", "TranscriptID"])
+
+#  Sum TPM values per Subfamily_CDDID, keeping one representative Gene_Name_y
+df_summed = df_unique.groupby("Subfamily_CDDID").agg({
+    "Subfamily_Name": "first",  # Take one subfamily name per subfamily
+    **{col: "sum" for col in df_unique.columns if col not in ["Subfamily_CDDID", "Gene_Name_y", "TranscriptID", "Subfamily_Name"]}
+}).reset_index()
+
+output_file = 'unique_TPM_expression_amph_part2.txt'
+df_summed.to_csv(output_file, sep='\t', index=False)
+
+# Log2 transform of numeric TPM columns (replace 0s for log-safety)
+numeric_cols = df_summed.columns.difference(["Subfamily_CDDID", "Gene_Name_y","Subfamily_Name"])
+df_loged = np.log2(df_summed[numeric_cols].replace(0, 0.5) + 0.5)
+print(df_summed)
+# Add identifiers back to the log dataframe
+df_loged["Subfamily_CDDID"] = df_summed["Subfamily_CDDID"]
+df_loged["Subfamily_Name"] = df_summed["Subfamily_Name"]
+
+df_loged = df_loged.sort_values(by="Subfamily_Name", ascending=True)
+#df_loged.drop(columns=["Gene_Name"], inplace=True)
+# Result
+df_loged
+
+# %%
+output_file = 'unique_TPM_expression_amph.txt'
+df_loged.to_csv(output_file, sep='\t', index=False)
+df_loged
+
+# %%
+df_heat = df_summed.loc[:, df_summed.columns.str.startswith("Sample")]
+
+df_heat.head()
+
+# %%
+row_mean = df_heat.mean(axis=1)
+log_mean = np.log2(row_mean)
+log_mean
+
+# %%
+numeric_cols = df_heat.select_dtypes(include='number')
+df_centered = numeric_cols.sub(log_mean, axis=0)
+df_centered.head()
+
+# %%
+max_value = df_centered.max().max()
+
+min_value = df_centered.min().min()
+
+print("Max value:", max_value)
+print("Min value:", min_value)
+
+# %%
+finals_df
+
+# %%
+df_summed
+
+
+# %%
+import matplotlib.colors as mcolors
+
+# %%
+
+
+# %%
+
+tpm_columns = [col for col in df_summed.columns if col.startswith('Sample.')]
+df_summed['Max_Fold_Change'] = df_summed[tpm_columns].max(axis=1) / (df_summed[tpm_columns].min(axis=1) + 0.5)
+
+#sort based on df_summed["Max_Fold_Change"]
+df_sortMX = df_summed.sort_values(by='Max_Fold_Change', ascending=False)
+gene_counts = finals_df[finals_df[tpm_columns].gt(1).all(axis=1)].groupby('Subfamily_Name').size().reset_index(name='Gene_Count')
+gene_counts = gene_counts[gene_counts['Gene_Count'] > 0]
+#merge gene counts
+df_summed_W_genecount =df_sortMX.merge(gene_counts, on='Subfamily_Name', how='left')
+#drop na
+df_summed_W_genecount = df_summed_W_genecount.dropna(subset=['Gene_Count']) 
+#print(df_summed_W_genecount)
+
+top_20_superfamilies = df_summed_W_genecount.head(20)
+
+heatmap_data = top_20_superfamilies.set_index('Subfamily_Name')[tpm_columns]
+#print(heatmap_data.index)
+heatmap_data_log2 = np.log2(heatmap_data + 0.5)
+
+min_val = heatmap_data_log2[tpm_columns].min().min()  # Minimum value across all selected columns
+max_val = heatmap_data_log2[tpm_columns].max().max()  # Maximum value across all selected columns
+midpoint = (min_val + max_val) / 2 
+row_mean = heatmap_data_log2.mean(axis=1)
+heatmap_data_centered = heatmap_data_log2.sub(midpoint, axis=0)
+
+
+
+#heatmap_data_centered["log2_diff"] = heatmap_data_log2["Sample.Cleavage"] - heatmap_data_log2["Sample.Free.swimming.larvae"]
+#print(heatmap_data_centered)
+#heatmap_data_sorted = heatmap_data_centered.sort_values(by="log2_diff", ascending=False)
+#print(heatmap_data_sorted)
+heatmap_data_sorted=heatmap_data_centered
+heatmap_data_sorted['Log2_Variance'] = heatmap_data_log2.var(axis=1)
+df_summed_W_genecount['Log2_Variance'] = heatmap_data_log2.var(axis=1)
+df_summed_W_genecount = df_summed_W_genecount.sort_values(by="Log2_Variance", ascending=False)
+top_20_superfamilies = df_summed_W_genecount.head(20)
+#heatmap_data_sorted = heatmap_data_sorted.drop("log2_diff", axis=1)
+heatmap_data_sorted = heatmap_data_sorted.sort_values(by="Log2_Variance", ascending=False)
+#print(heatmap_data_sorted)
+heatmap_data_sorted = heatmap_data_sorted.drop("Log2_Variance", axis=1)
+row_labels = [f"{superfamily} ({count} genes)"
+    for superfamily, count in zip(top_20_superfamilies['Subfamily_Name'], top_20_superfamilies['Gene_Count'])
+]
+plt.figure(figsize=(12, 8))
+sns.heatmap(
+    heatmap_data_sorted,
+    cmap="RdBu_r",
+    yticklabels=row_labels,
+    vmin=-4,
+    vmax=4,
+)
+
+plt.title('Top SET Subfamilies of Amphimedon by Max Fold Change in Log2 TPM')
+plt.xlabel('Stage Points')
+plt.ylabel('Subfamily (Number of Genes with >1 TPM)')
+plt.xticks(rotation=45, ha='right')
+plt.tight_layout()
+plt.draw()
+plt.draw()
+plt.show()
+plt.savefig('Top Domains Heatmap- drosophila.pdf')
+
+
